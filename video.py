@@ -27,7 +27,7 @@ class VideoStreaming:
         self.Wheel_Flag = 1
         self.Rotate_Flag = 1
 
-
+        self.target_color = None
         self.current_index = 0
 
         # Define color sequence (example)
@@ -188,15 +188,19 @@ class VideoStreaming:
                     if hue_value in range(160, 180): #and dom1 in range(52,256) and dom2 in range(111, 255):
                       ball_color = ("RED")
                       self.LedChange(255,0,0)
+                      self.knockout()
                     elif hue_value in range(70, 94): #and dom1 in range(52, 255) and dom2 in range(72, 255):
                       ball_color =("GREEN") 
                       self.LedChange(0,255,0) 
+                      self.knockout()
                     elif hue_value in range(95, 105): #and dom1 in range(80, 255) and dom2 in range(2, 255):
                       ball_color =("BLUE")
-                      self.LedChange(0,0,255)  
+                      self.LedChange(0,0,255)
+                      self.knockout()  
                     elif hue_value in range(24, 34):  
                         ball_color =("YELLOW")
-                        self.LedChange(255,255,0)        
+                        self.LedChange(255,255,0)
+                        self.knockout()        
                     print('Hue: ', hue_value, ball_color) 
 
                     # Record current max
@@ -297,8 +301,10 @@ class VideoStreaming:
 
     def find_next_ball(self):
         # Implement logic to find the next ball in the color sequence
+        if self.current_index >= len(self.color_sequence):
+            self.current_index = 0  # Wrap around if index exceeds sequence length
+        self.target_color = self.color_sequence[self.current_index]
         self.current_index += 1
-
 
     
 
@@ -322,10 +328,11 @@ class VideoStreaming:
                                 self.face_detect(image)
                                 self.video_Flag=False
 
-
+                                if self.target_color =='RED':
+                                    self.knockout()
+                                    self.find_next_ball()
                                 
-                                self.find_next_ball()
-                                self.knockout()
+                            
 
 
 
