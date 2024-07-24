@@ -11,7 +11,8 @@ from multiprocessing import Process
 from Command import COMMAND as cmd
 import yolov5
 import os
-
+import threading
+import yolov5
 import time
 
 
@@ -26,12 +27,14 @@ class VideoStreaming:
 
         self.Wheel_Flag = 1
         self.Rotate_Flag = 1
+        self.intervalChar = '#'
+        self.endChar = '\n'
 
         self.target_color = None
         self.current_index = 0
 
         # Define color sequence (example)
-        self.color_sequence = ['RED', 'GREEN', 'BLUE', 'YELLOW']
+        self.color_sequence = [0,1,2,3] #R,G,B,Y
 
 
 
@@ -78,8 +81,7 @@ class VideoStreaming:
     
 ##########################NEW STUFF#########################
     def LedChange(self,R,G,B):
-        self.intervalChar = '#'
-        self.endChar = '\n'
+       
 
         #led_Off = self.intervalChar + str(0) + self.intervalChar + str(0) + self.intervalChar + str(0) + self.endChar
         color = self.intervalChar + str(R) + self.intervalChar + str(G) + self.intervalChar + str(B) + self.endChar
@@ -181,31 +183,46 @@ class VideoStreaming:
                     #pixel = croppedImage[ccx,ccy]
                     hsv_pixel = cv2.cvtColor(croppedImage, cv2.COLOR_BGR2HSV)
                     pixel_center = hsv_pixel[ccy,ccx]
-                    hue_value = pixel_center[0]\
+                    hue_value = pixel_center[0]
+
+                    ball_colornum = -1 #look at
                     
                     ball_color = 'No color detected'
                     #clear 
                     if hue_value in range(160, 180): #and dom1 in range(52,256) and dom2 in range(111, 255):
+                      ball_colornum = 0
                       ball_color = ("RED")
                       self.LedChange(255,0,0)
-                      self.knockout()
+                     
                     elif hue_value in range(70, 94): #and dom1 in range(52, 255) and dom2 in range(72, 255):
+                      ball_colornum =1
                       ball_color =("GREEN") 
                       self.LedChange(0,255,0) 
-                      self.knockout()
+                     
                     elif hue_value in range(95, 105): #and dom1 in range(80, 255) and dom2 in range(2, 255):
+                      ball_colornum = 2
                       ball_color =("BLUE")
                       self.LedChange(0,0,255)
-                      self.knockout()  
-                    elif hue_value in range(24, 34):  
+     
+                    elif hue_value in range(24, 34):
+                        ball_colornum = 3  
                         ball_color =("YELLOW")
                         self.LedChange(255,255,0)
-                        self.knockout()        
+       
                     print('Hue: ', hue_value, ball_color) 
 
                     # Record current max
                     max_score = curr_score[i]
                     max_index = i
+
+                    if ball_colornum == self.color_sequence[self.current_index]:
+                        self.move_forward()
+                        time.sleep(2)
+                        self.stop_movement()
+                        self.current_index += 1
+                        if self.current_index >= len(self.color_sequence):
+                            self.color_sequence=0
+
 
             #put set to 0,0,0
             if len(scores) == 0:
@@ -291,21 +308,6 @@ class VideoStreaming:
                 0) + self.intervalChar + str(0) + self.endChar
             self.sendData(cmd.CMD_MOTOR + Stop)
 
-
-
-    def knockout(self):
-        self.move_forward(speed=800)
-        time.sleep(2)
-        self.stop_movement()
-    
-
-    def find_next_ball(self):
-        # Implement logic to find the next ball in the color sequence
-        if self.current_index >= len(self.color_sequence):
-            self.current_index = 0  # Wrap around if index exceeds sequence length
-        self.target_color = self.color_sequence[self.current_index]
-        self.current_index += 1
-
     
 
 
@@ -317,6 +319,62 @@ class VideoStreaming:
         except:
             #print "command port connect failed"
             pass
+
+
+
+###########################GPT###################################
+
+        vs = cv2.VideoCapture(0)
+        
+        # def detect_balls():
+        #     while True:
+        #         ret, frame = vs.read()
+        #         if not ret:
+        #             break
+                
+
+        #     results = self.model(frame)
+        #     predictions = results.pred[0]
+
+        #     ball_coords = []
+        #     for pred in predictions:
+        #         # Extract coordinates and other relevant information
+        #         ball_coords.append(pred)
+
+        #     # Process ball coordinates as needed
+
+        #     time.sleep(0.1)
+
+
+        # def detect_faces():
+        #     while True:
+        #         ret, frame = vs.read()
+        #         if not ret:
+        #             break
+        #         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        #         faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+        #     for (x, y, w, h) in faces:
+        #         # Draw rectangle around detected faces if needed
+        #         cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        #         time.sleep(0.1)
+    
+    # def main():
+    #     ball_thread = threading.Thread(target=ball)
+    #     boundary_thread = threading.Thread(target=boundary_detection)
+    #     ball_thread.start()
+    #     boundary_thread.start()
+    #     ball_thread.join()
+    #     boundary_thread.join()
+    #     ball_thread = threading.Thread(target=detect_balls)
+    #     boundary_thread = threading.Thread(target=detect_faces)
+
+    #     ball_thread.start()
+    #     boundary_thread.start()
+
+
+
+#####################################################################
         while True:
             try:
                 stream_bytes= self.connection.read(4) 
@@ -329,8 +387,9 @@ class VideoStreaming:
                                 self.video_Flag=False
 
                                 if self.target_color =='RED':
-                                    self.knockout()
-                                    self.find_next_ball()
+                                    # self.knockout()
+                                    time.sleep(1)
+                                    # self.find_next_ball()
                                 
                             
 
@@ -340,6 +399,10 @@ class VideoStreaming:
             except Exception as e:
                 print (e)
                 break
+
+        vs.release()
+        self.client_socket.close()
+        print("Streaming ended")    
                   
     def sendData(self,s):
         if self.connect_Flag:
