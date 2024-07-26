@@ -33,8 +33,8 @@ class VideoStreaming:
         self.target_color = None
         self.current_index = 0
 
-        # Define color sequence (example)
-        self.color_sequence = [0,1,2,3] #R,G,B,Y
+      
+        self.color_sequence = [0,1,2,3] #R=0,G=1,B=2,Y=3
 
 
 
@@ -95,11 +95,164 @@ class VideoStreaming:
         self.sendData(cmd.CMD_LED + self.intervalChar + str(0x40) + color)
         self.sendData(cmd.CMD_LED + self.intervalChar + str(0x80) + color)
 
+    def _build_command(self, front_left, front_right, rear_left, rear_right):
+        return (
+            self.intervalChar + str(front_left) +
+            self.intervalChar + str(front_right) +
+            self.intervalChar + str(rear_left) +
+            self.intervalChar + str(rear_right) +
+            self.endChar
+        )
 
- 
+
+    def adjust(self,mid_pix):
+        self.get_new_middle()
+        STOP_CMD = self._build_command(0, 0, 0, 0)
+        TURN_RIGHT_CMD = self._build_command(800, 800, -800, -800)
+        TURN_LEFT_CMD = self._build_command(-800, -800, 800, 800)
+        CENTER_MIN = 180
+        CENTER_MAX = 230
+
+        if mid_pix is None:
+            print("No ball detected to adjust.")
+            return
+
+
+        # Stop = self.intervalChar + str(0) + self.intervalChar + str(0) + self.intervalChar + str(0) + self.intervalChar + str(0) + self.endChar
+        # Turn_Right = self.intervalChar + str(875) + self.intervalChar + str(875) + self.intervalChar + str(-875) + self.intervalChar + str(-875) + self.endChar
+        # Turn_Left = self.intervalChar + str(-870) + self.intervalChar + str(-870) + self.intervalChar + str(870) + self.intervalChar + str(870) + self.endChar
+       
+        attempts = 0
+        max_attempts = 20
+        
+        while attempts < max_attempts:
+            print(f"mid_pix: {mid_pix} attempts: {attempts}")
+            if mid_pix is None:
+                print("Ball lost during adjustment.")
+                return 
+
+            if CENTER_MIN < mid_pix < CENTER_MAX:
+                print("Already centered.")
+                self.drive()
+                break
+
+            else:
+                if mid_pix < CENTER_MIN:
+                    print("Turning Left")
+                    self.sendData(cmd.CMD_MOTOR + TURN_LEFT_CMD)
+                    time.sleep(1)
+                    self.sendData(cmd.CMD_MOTOR + STOP_CMD)
+                    time.sleep(3)  # Small delay to ensure stability before checking again
+                    mid_pix = self.get_new_middle()  # Implement this method to get the new middle position
+                    # self.drive()
+                    
+
+                elif mid_pix > CENTER_MAX:
+                    print("Turning Right")
+                    self.sendData(cmd.CMD_MOTOR + TURN_RIGHT_CMD)
+                    time.sleep(1)
+                    self.sendData(cmd.CMD_MOTOR + STOP_CMD)
+                    time.sleep(3)  # Small delay to ensure stability before checking again
+                    mid_pix = self.get_new_middle()  # Implement this method to get the new middle position
+                    ## self.drive()
+                    
+                attempts += 1
+        
+        print("Max attempts reached")
+
+
+            # if not (180 < mid_pix < 230):
+            #     if (180 > mid_pix):
+            #             print("Turning Left")
+            #             self.sendData(cmd.CMD_MOTOR+Turn_Left)
+            #             time.sleep(.1)
+            #             self.sendData(cmd.CMD_MOTOR+Stop)
+            #     else:
+            #             print("Turning Right")
+            #             self.sendData(cmd.CMD_MOTOR+Turn_Right)
+            #             time.sleep(.1)
+            #             self.sendData(cmd.CMD_MOTOR+Stop)
+
+                # attempts +=1 
+            # else:
+            #     print("Centered and Stopped")
+            #     self.sendData(cmd.CMD_MOTOR+Stop)
+            #     break
+
+
+    def drive(self):
+        print("Adjustment complete, now moving forward...")
+        self.move_forward()
+        time.sleep(0.1)
+        self.move_forward()
+        time.sleep(5)
+        self.stop_movement()
+        print("Movement complete.")
+
+    def get_new_middle(self):
+        cap = cv2.VideoCapture(0)  # Adjust the index based on your camera setup
+        ret, frame = cap.read()
+        if not ret:
+            print("Failed to grab frame")
+            return None
+
+        # Detect the ball in the frame
+        model_name = 'Yolov5_models'
+        yolov5_model = 'balls5n.pt'
+        model_labels = 'balls5n.txt'
+
+        CWD_PATH = os.getcwd()
+        PATH_TO_LABELS = os.path.join(CWD_PATH, model_name, model_labels)
+        PATH_TO_YOLOV5_GRAPH = os.path.join(CWD_PATH, model_name, yolov5_model)
+
+        with open(PATH_TO_LABELS, 'r') as f:
+            labels = [line.strip() for line in f.readlines()]
+
+        model = yolov5.load(PATH_TO_YOLOV5_GRAPH)
+
+        stride, names, pt = model.stride, model.names, model.pt
+        print('stride = ', stride, 'names = ', names)
+
+        min_conf_threshold = 0.25
+        model.conf = 0.25
+        model.iou = 0.45
+        model.agnostic = False
+        model.multi_label = True
+        model.max_det = 1000
+
+        results = model(frame)
+        predictions = results.pred[0]
+
+        boxes = predictions[:, :4]
+        scores = predictions[:, 4]
+        classes = predictions[:, 5]
+        results.render()
+
+        imW, imH = int(640), int(640)
+
+        for i in range(len(scores)):
+            curr_score = scores.numpy()
+            if i >= len(scores):
+                print(f"Skipping index {i}, which is out of bounds for scores with length {len(scores)}")
+                continue
+
+            if ((curr_score[i] > min_conf_threshold) and (curr_score[i] <= 1.0)):
+                print('Class: ', labels[int(classes[i])], ' Conf: ', curr_score[i])
+
+                xmin = int(max(1, (boxes[i][0])))
+                ymin = int(max(1, (boxes[i][1])))
+                xmax = int(min(imW, (boxes[i][2])))
+                ymax = int(min(imH, (boxes[i][3])))
+
+                center = (xmin + xmax) / 2
+                print(f"Detected center: {center}")  # Add this line for debugging
+                return center
+
+        return None
+
     def face_detect(self,img):
-        if sys.platform.startswith('win') or sys.platform.startswith('darwin'):
-            gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        # if sys.platform.startswith('win') or sys.platform.startswith('darwin'):
+        #     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
 
             model_name = 'Yolov5_models'
             yolov5_model = 'balls5n.pt'
@@ -164,6 +317,9 @@ class VideoStreaming:
                     ymin = int(max(1,(boxes[i][1])))
                     xmax = int(min(imW,(boxes[i][2])))
                     ymax = int(min(imH,(boxes[i][3])))
+
+                    mid_pix = (xmin + xmax) / 2
+                    # self.adjust(mid_pix)
                             
                     # Draw label
                     #object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
@@ -185,8 +341,8 @@ class VideoStreaming:
                     pixel_center = hsv_pixel[ccy,ccx]
                     hue_value = pixel_center[0]
 
+
                     ball_colornum = -1 #look at
-                    
                     ball_color = 'No color detected'
                     #clear 
                     if hue_value in range(160, 180): #and dom1 in range(52,256) and dom2 in range(111, 255):
@@ -215,13 +371,16 @@ class VideoStreaming:
                     max_score = curr_score[i]
                     max_index = i
 
+
                     if ball_colornum == self.color_sequence[self.current_index]:
-                        self.move_forward()
-                        time.sleep(2)
-                        self.stop_movement()
-                        self.current_index += 1
-                        if self.current_index >= len(self.color_sequence):
-                            self.color_sequence=0
+                            self.adjust(mid_pix)
+                            self.move_forward()
+                            time.sleep(5)
+                            self.stop_movement()
+                            self.current_index += 1
+                            if self.current_index >= len(self.color_sequence):
+                                self.color_sequence=0
+                            
 
 
             #put set to 0,0,0
@@ -243,7 +402,7 @@ class VideoStreaming:
 
 
 
-    def move_forward(self, speed=1500):
+    def move_forward(self, speed=650): #Find best speed
         if self.Wheel_Flag:
             if self.Rotate_Flag:
                 M_ForWard = self.intervalChar + str(0) + self.intervalChar + str(speed) + self.intervalChar + str(
