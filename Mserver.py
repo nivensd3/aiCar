@@ -27,7 +27,8 @@ from threading import Timer
 from threading import Thread
 from Command import COMMAND as cmd
 import RPi.GPIO as GPIO
-from LineAvoidance import *
+# from Light import *
+
 
 
 
@@ -62,7 +63,7 @@ class Server:
         self.intervalChar = '#'
         self.rotation_flag = False
 
-        self.boundary = LineAvoidance()
+        # self.boundary = False
 
 
 
@@ -78,11 +79,11 @@ class Server:
         self.server_socket1 = socket.socket()
         self.server_socket1.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self.server_socket1.bind((HOST, 5000))
-        self.server_socket1.listen(1)
+        self.server_socket1.listen(1) # change back to 1
         self.server_socket = socket.socket()
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self.server_socket.bind((HOST, 8000))
-        self.server_socket.listen(1)
+        self.server_socket.listen(1) # change back to 1
         print('Server address: ' + HOST)
 
     def StopTcpServer(self):
@@ -99,6 +100,19 @@ class Server:
         self.ReadData = Thread(target=self.readdata)
         self.SendVideo.start()
         self.ReadData.start()
+
+    # def sendBoundary(self):
+    #         if self.boundary:
+    #             boundary_detected = infrared.run()  # Replace with your actual detection function
+    #             try:
+    #                 self.send("CMD_BOUNDARY#" + str(boundary_detected) + '\n')
+    #             except:
+    #                 self.boundary = False
+    #             self.boundaryTimer = threading.Timer(0.2, self.sendBoundary)
+    #             self.boundaryTimer.start()
+
+
+
 
     def send(self, data):
         self.connection1.send(data.encode('utf-8'))
@@ -117,6 +131,11 @@ class Server:
         encoder = JpegEncoder(q=90)
         camera.start_recording(encoder, FileOutput(output), quality=Quality.VERY_HIGH)
         while True:
+
+            LightSensor = self.light.detect()
+            if LightSensor > 0:
+                self.send(cmd.CMD_SENSOR + '#' + '1\n')
+
             with output.condition:
                 output.condition.wait()
                 frame = output.frame
@@ -132,6 +151,8 @@ class Server:
                 print("End transmit ... ")
                 break
 
+
+
     def stopMode(self):
         try:
             stop_thread(self.infraredRun)
@@ -146,7 +167,7 @@ class Server:
         try:
             stop_thread(self.ultrasonicRun)
             self.PWM.setMotorModel(0, 0, 0, 0)
-            self.servo.setServoPwm('0', 90)
+            self.servo.setServoPwm('0', 74)
             self.servo.setServoPwm('1', 90)
         except:
             pass
@@ -174,38 +195,6 @@ class Server:
                         self.Reset()
                     break
                 print(AllData)
-                if self.boundary.LMR != 0:
-                        if self.boundary.locked == True:
-                            if len(self.boundary.order) == 1:
-                                self.boundary.gameOver == True
-                                self.boundary.order = []
-                            else:
-                                self.boundary.order = self.boundary.order[1:]
-                            self.boundary.locked = False
-                        if self.boundary.LMR == 4:
-                            self.backup(.7)
-                            self.turnRight(.5)
-                        elif self.boundary.LMR == 6:
-                            self.backup(.4)
-                            self.turnRight(1)
-                        elif self.boundary.LMR == 1:
-                            self.backup(.7)
-                            self.turnLeft(.7)
-                        elif self.boundary.LMR == 3:
-                            self.backup(.6)
-                            self.turnLeft(1)
-                        elif self.boundary.LMR==7 or self.boundary.LMR == 5:
-                            self.backup(.9)
-                            self.turnRight(.9)
-                        
-                else:
-                    pass
-
-
-
-
-
-
 
                 if len(AllData) < 5:
                     restCmd = AllData
@@ -287,135 +276,117 @@ class Server:
                             self.PWM.setMotorModel(FL, BL, FR, BR)
                         except:
                             pass
-                    # elif (cmd.CMD_CAR_ROTATE in data) and self.Mode == 'one':
-                    #     try:
+                    elif (cmd.CMD_CAR_ROTATE in data) and self.Mode == 'one':
+                        try:
 
-                    #         data1 = int(data[1])
-                    #         data2 = int(data[2])
-                    #         data3 = int(data[3])
-                    #         data4 = int(data[4])
-                    #         set_angle = data3
-                    #         if data4 == 0:
-                    #             try:
-                    #                 stop_thread(Rotate_Mode)
-                    #                 self.rotation_flag = False
-                    #             except:
-                    #                 pass
-                    #             LX = -int((data2 * math.sin(math.radians(data1))))
-                    #             LY = int(data2 * math.cos(math.radians(data1)))
-                    #             RX = int(data4 * math.sin(math.radians(data3)))
-                    #             RY = int(data4 * math.cos(math.radians(data3)))
+                            data1 = int(data[1])
+                            data2 = int(data[2])
+                            data3 = int(data[3])
+                            data4 = int(data[4])
+                            set_angle = data3
+                            if data4 == 0:
+                                try:
+                                    stop_thread(Rotate_Mode)
+                                    self.rotation_flag = False
+                                except:
+                                    pass
+                                LX = -int((data2 * math.sin(math.radians(data1))))
+                                LY = int(data2 * math.cos(math.radians(data1)))
+                                RX = int(data4 * math.sin(math.radians(data3)))
+                                RY = int(data4 * math.cos(math.radians(data3)))
 
-                    #             FR = LY - LX + RX
-                    #             FL = LY + LX - RX
-                    #             BL = LY - LX - RX
-                    #             BR = LY + LX + RX
+                                FR = LY - LX + RX
+                                FL = LY + LX - RX
+                                BL = LY - LX - RX
+                                BR = LY + LX + RX
 
-                    #             if data1 == None or data2 == None or data3 == None or data4 == None:
-                    #                 continue
-                    #             self.PWM.setMotorModel(FL, BL, FR, BR)
-                    #         elif self.rotation_flag == False:
-                    #             self.angle = data[3]
-                    #             try:
-                    #                 stop_thread(Rotate_Mode)
-                    #             except:
-                    #                 pass
-                    #             self.rotation_flag = True
-                    #             Rotate_Mode = Thread(target=self.PWM.Rotate, args=(data3,))
-                    #             Rotate_Mode.start()
-                    #     except:
-                    #         pass
-                    # elif cmd.CMD_SERVO in data:
-                    #     try:
-                    #         data1 = data[1]
-                    #         data2 = int(data[2])
-                    #         if data1 is None or data2 is None:
-                    #             continue
-                    #         self.servo.setServoPwm(data1, data2)
-                    #     except:
-                    #         pass
+                                if data1 == None or data2 == None or data3 == None or data4 == None:
+                                    continue
+                                self.PWM.setMotorModel(FL, BL, FR, BR)
+                            elif self.rotation_flag == False:
+                                self.angle = data[3]
+                                try:
+                                    stop_thread(Rotate_Mode)
+                                except:
+                                    pass
+                                self.rotation_flag = True
+                                Rotate_Mode = Thread(target=self.PWM.Rotate, args=(data3,))
+                                Rotate_Mode.start()
+                        except:
+                            pass
+                    elif cmd.CMD_SERVO in data:
+                        try:
+                            data1 = data[1]
+                            data2 = int(data[2])
+                            if data1 is None or data2 is None:
+                                continue
+                            self.servo.setServoPwm(data1, data2)
+                        except:
+                            pass
 
-                    # elif cmd.CMD_LED in data:
-                    #     try:
-                    #         data1=int(data[1])
-                    #         data2=int(data[2])
-                    #         data3=int(data[3])
-                    #         data4=int(data[4])
-                    #         if data1==None or data2==None or data3==None or data4==None:
-                    #             continue
-                    #         self.led.ledIndex(data1, data2, data3, data4)
-                    #     except:
-                    #         pass
-                    # elif cmd.CMD_LED_MOD in data:
-                    #     self.LedMoD = data[1]
-                    #     if self.LedMoD == '0':
-                    #         try:
-                    #             stop_thread(Led_Mode)
-                    #         except:
-                    #             pass
-                    #     if self.LedMoD == '1':
-                    #         try:
-                    #             stop_thread(Led_Mode)
-                    #         except:
-                    #             pass
-                    #         self.led.ledMode(self.LedMoD)
-                    #         time.sleep(0.1)
-                    #         self.led.ledMode(self.LedMoD)
-                    #     else:
-                    #         try:
-                    #             stop_thread(Led_Mode)
-                    #         except:
-                    #             pass
-                    #         time.sleep(0.1)
-                    #         Led_Mode = Thread(target=self.led.ledMode, args=(data[1],))
-                    #         Led_Mode.start()
-                    # elif cmd.CMD_SONIC in data:
-                    #     if data[1] == '1':
-                    #         self.sonic = True
-                    #         self.ultrasonicTimer = threading.Timer(0.5, self.sendUltrasonic)
-                    #         self.ultrasonicTimer.start()
-                    #     else:
-                    #         self.sonic = False
-                    # elif cmd.CMD_BUZZER in data:
-                    #     try:
-                    #         self.buzzer.run(data[1])
-                    #     except:
-                    #         pass
-                    # elif cmd.CMD_LIGHT in data:
-                    #     if data[1] == '1':
-                    #         self.Light = True
-                    #         self.lightTimer = threading.Timer(0.3, self.sendLight)
-                    #         self.lightTimer.start()
-                    #     else:
-                    #         self.Light = False
+                    elif cmd.CMD_LED in data:
+                        try:
+                            data1=int(data[1])
+                            data2=int(data[2])
+                            data3=int(data[3])
+                            data4=int(data[4])
+                            if data1==None or data2==None or data3==None or data4==None:
+                                continue
+                            self.led.ledIndex(data1, data2, data3, data4)
+                        except:
+                            pass
+                    elif cmd.CMD_LED_MOD in data:
+                        self.LedMoD = data[1]
+                        if self.LedMoD == '0':
+                            try:
+                                stop_thread(Led_Mode)
+                            except:
+                                pass
+                        if self.LedMoD == '1':
+                            try:
+                                stop_thread(Led_Mode)
+                            except:
+                                pass
+                            self.led.ledMode(self.LedMoD)
+                            time.sleep(0.1)
+                            self.led.ledMode(self.LedMoD)
+                        else:
+                            try:
+                                stop_thread(Led_Mode)
+                            except:
+                                pass
+                            time.sleep(0.1)
+                            Led_Mode = Thread(target=self.led.ledMode, args=(data[1],))
+                            Led_Mode.start()
+                    elif cmd.CMD_SONIC in data:
+                        if data[1] == '1':
+                            self.sonic = True
+                            self.ultrasonicTimer = threading.Timer(0.5, self.sendUltrasonic)
+                            self.ultrasonicTimer.start()
+                        else:
+                            self.sonic = False
+                    elif cmd.CMD_BUZZER in data:
+                        try:
+                            self.buzzer.run(data[1])
+                        except:
+                            pass
+                    elif cmd.CMD_LIGHT in data:
+                        if data[1] == '1':
+                            self.Light = True
+                            self.lightTimer = threading.Timer(0.3, self.sendLight)
+                            self.lightTimer.start()
+                        else:
+                            self.Light = False
                     elif cmd.CMD_POWER in data:
                         ADC_Power = self.adc.recvADC(2) * 3
                         try:
                             self.send(cmd.CMD_POWER + '#' + str(round(ADC_Power, 2)) + '\n')
                         except:
                             pass
+            time.sleep(.000000000000001)            
         except Exception as e:
             print(e)
         self.StopTcpServer()
-
-
-    def stop(self,leng):
-        self.stop(.5)
-        PWM.setMotorModel(0,0,0,0)  # stop
-        time.sleep(leng)
-    def turnRight(self,leng):
-        self.stop(.5)
-        PWM.setMotorModel(2500, 2500, -3000, -3000)# Right
-        time.sleep(leng)
-    def turnLeft(self,leng):
-        self.stop(.5)
-        PWM.setMotorModel(3000, 3000, -2500, -2500)  # Left
-        time.sleep(leng)
-    def back(self,leng):
-        self.stop(.5)
-        PWM.setMotorModel(-700, -700, -700, -700) # Back
-        time.sleep(leng)
-
 
 
     def sendUltrasonic(self):
@@ -452,7 +423,7 @@ class Server:
             self.LineTimer = threading.Timer(0.20, self.sendLine)
             self.LineTimer.start()
 
-    def Power(self):102
+    def Power(self):
         while True:
             ADC_Power = self.adc.recvADC(2) * 3
             try:
@@ -460,20 +431,20 @@ class Server:
             except:
                 pass
             time.sleep(3)
-            if ADC_Power < 6.5:
-                for i in range(4):
-                    self.buzzer.run('1')
-                    time.sleep(0.1)
-                    self.buzzer.run('0')
-                    time.sleep(0.1)
-            elif ADC_Power < 7:
-                for i in range(2):
-                    self.buzzer.run('1')
-                    time.sleep(0.1)
-                    self.buzzer.run('0')
-                    time.sleep(0.1)
-            else:
-                self.buzzer.run('0')
+            # if ADC_Power < 6.5:
+            #     for i in range(4):
+            #         self.buzzer.run('1')
+            #         time.sleep(0.1)
+            #         self.buzzer.run('0')
+            #         time.sleep(0.1)
+            # elif ADC_Power < 7:
+            #     for i in range(2):
+            #         self.buzzer.run('1')
+            #         time.sleep(0.1)
+            #         self.buzzer.run('0')
+            #         time.sleep(0.1)
+            # else:
+            #     self.buzzer.run('0')
 
 
 
