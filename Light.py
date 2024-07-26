@@ -86,12 +86,27 @@ class Light:
             else:
                 PWM.setMotorModel(000,000,000,000) # to go forward at the beginning
 
+            time.sleep(1)  
+
+    def detect(self):
+        self.LMR=0x00
+        if GPIO.input(IR01)==True:
+            self.LMR=(self.LMR | 4)
+        if GPIO.input(IR02)==True:
+            self.LMR=(self.LMR | 2)
+        if GPIO.input(IR03)==True:
+            self.LMR=(self.LMR | 1)
+        print(self.LMR)
+        return self.LMR
+
+
 
 infrared=Light()
 if __name__=='__main__':
     print ('Program is starting ... ')
     try:
         infrared.run()
+        infrared.detect()
     except KeyboardInterrupt: # When 'Ctrl+C' is pressed, the child program destroy() will be 
     #executed.
         PWM.setMotorModel(0,0,0,0)
